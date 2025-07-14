@@ -37,7 +37,7 @@ def weathercode_to_emoji(code):
     return mapping.get(code, "❓")
 
 
-def get_weather(lat, lon, hours=6):
+def get_weather(lat, lon, hours=12):
     url = (
         f"https://api.open-meteo.com/v1/forecast?"
         f"latitude={lat}&longitude={lon}&hourly=temperature_2m,weathercode&forecast_days=2"
@@ -47,13 +47,16 @@ def get_weather(lat, lon, hours=6):
     times = data["hourly"]["time"]
     temps = data["hourly"]["temperature_2m"]
     codes = data["hourly"]["weathercode"]
-    now = datetime.datetime.now(ZoneInfo("Europe/Berlin"))  # Offset-aware!
+    now = datetime.datetime.now(ZoneInfo("Europe/Berlin"))  # Offset-aware
     weather = []
+
     for t, temp, code in zip(times, temps, codes):
         dt = datetime.datetime.fromisoformat(t)
-        # Hvis dt er naive, gjør den offset-aware:
+        # Konverter UTC → lokal tid
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=ZoneInfo("Europe/Berlin"))
+            dt = dt.replace(tzinfo=datetime.timezone.utc).astimezone(
+                ZoneInfo("Europe/Berlin")
+            )
         if dt >= now:
             weather.append(
                 {
@@ -139,66 +142,71 @@ def index():
         )
 
     # Værdata (krever ikke endringer, du bruker riktig tidssone allerede)
-    weather = get_weather(station["latitude"], station["longitude"], hours=6)
+    weather = get_weather(station["latitude"], station["longitude"], hours=12)
     detailed_weather = get_weather_next_hour(station["latitude"], station["longitude"])
     html = """
-    <html>
-    <head>
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          margin: 0;
-          padding: 0;
-          background: #f7f7f7;
-        }
-        .container {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 20px;
-        }
-        h1, h2 {
-          text-align: center;
-          margin-top: 20px;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin: 20px 0;
-          background: #fff;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        }
-        th, td {
-          padding: 8px 4px;
-          text-align: center;
-          border-bottom: 1px solid #eee;
-        }
-        th {
-          background: #e3e3e3;
-        }
-        tr:last-child td {
-          border-bottom: none;
-        }
-        @media (max-width: 700px) {
-          .container {
-            padding: 5px;
-          }
-          table, th, td {
-            font-size: 14px;
-            padding: 4px 2px;
-          }
-        }
-      </style>
-    </head>
-    <body>
-    <div class="container">
-    <h1>Piplup er verdens søteste❤️❤️❤️</h1>
-    <h1>Neste 5 U-Bahn fra {{station}}</h1>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f4f6f9;
+      color: #333;
+    }
+    .container {
+      max-width: 900px;
+      margin: auto;
+      padding: 20px;
+    }
+    h1, h2 {
+      text-align: center;
+      margin: 30px 0 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      margin-bottom: 30px;
+    }
+    th, td {
+      padding: 12px 8px;
+      text-align: center;
+      border-bottom: 1px solid #eee;
+    }
+    th {
+      background-color: #0078d7;
+      color: white;
+      font-weight: 600;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    @media (max-width: 700px) {
+      .container {
+        padding: 10px;
+      }
+      table, th, td {
+        font-size: 14px;
+        padding: 6px 4px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <h2>Next U-Bahns from {{station}}</h2>
     <table>
       <tr>
-        <th>Linje</th>
-        <th>Destinasjon</th>
-        <th>Avgangstid</th>
+        <th>Line</th>
+        <th>Destination</th>
+        <th>Departure</th>
       </tr>
       {% for dep in departures %}
       <tr>
@@ -208,12 +216,13 @@ def index():
       </tr>
       {% endfor %}
     </table>
-    <h2>Vær neste 6 timer</h2>
+
+    <h2>Weather - Next 12 Hours</h2>
     <table>
       <tr>
-        <th>Tid</th>
-        <th>Temperatur (°C)</th>
-        <th>Emoji</th>
+        <th>Time</th>
+        <th>Temperature (°C)</th>
+        <th>Condition</th>
       </tr>
       {% for w in weather %}
       <tr>
@@ -223,15 +232,16 @@ def index():
       </tr>
       {% endfor %}
     </table>
-    <h2>Veldig detaljert vær neste time</h2>
+
+    <h2>Detailed Forecast - Next Hour</h2>
     <table>
       <tr>
-        <th>Tid</th>
-        <th>Temperatur (°C)</th>
-        <th>Følt temp (°C)</th>
-        <th>Nedbør (mm)</th>
-        <th>Vind (m/s)</th>
-        <th>Emoji</th>
+        <th>Time</th>
+        <th>Temperature (°C)</th>
+        <th>Feels Like (°C)</th>
+        <th>Precipitation (mm)</th>
+        <th>Wind (m/s)</th>
+        <th>Condition</th>
       </tr>
       {% for w in detailed_weather %}
       <tr>
@@ -244,10 +254,11 @@ def index():
       </tr>
       {% endfor %}
     </table>
-    </div>
-    </body>
-    </html>
-    """
+  </div>
+</body>
+</html>
+"""
+
     return render_template_string(
         html,
         station=station["name"],
