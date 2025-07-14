@@ -1,6 +1,7 @@
 from flask import Flask, render_template_string
 from mvg import MvgApi, TransportType
 import datetime
+from zoneinfo import ZoneInfo
 import requests
 
 app = Flask(__name__)
@@ -46,10 +47,13 @@ def get_weather(lat, lon, hours=6):
     times = data["hourly"]["time"]
     temps = data["hourly"]["temperature_2m"]
     codes = data["hourly"]["weathercode"]
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(ZoneInfo("Europe/Berlin"))  # Offset-aware!
     weather = []
     for t, temp, code in zip(times, temps, codes):
         dt = datetime.datetime.fromisoformat(t)
+        # Hvis dt er naive, gjør den offset-aware:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo("Europe/Berlin"))
         if dt >= now:
             weather.append(
                 {
@@ -79,17 +83,23 @@ def get_weather_next_hour(lat, lon):
     codes = data["hourly"]["weathercode"]
     precip = data["hourly"]["precipitation"]
     wind = data["hourly"]["windspeed_10m"]
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(ZoneInfo("Europe/Berlin"))
     detailed_weather = []
+
     for t, temp, app_temp, code, pr, ws in zip(
         times, temps, apparent, codes, precip, wind
     ):
         dt = datetime.datetime.fromisoformat(t)
-        # Kun neste time
-        if 0 <= (dt - now).total_seconds() < 3600:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc).astimezone(
+                ZoneInfo("Europe/Berlin")
+            )
+
+        # Finn neste hele timen etter "nå"
+        if dt > now:
             detailed_weather.append(
                 {
-                    "tid": dt.strftime("%H:%M"),
+                    "tid": f"{now.strftime('%H:%M')} → {dt.strftime('%H:%M')}",
                     "temp": temp,
                     "følt_temp": app_temp,
                     "nedbør": pr,
@@ -98,6 +108,8 @@ def get_weather_next_hour(lat, lon):
                     "emoji": weathercode_to_emoji(code),
                 }
             )
+            break  # bare én time er ønsket
+
     return detailed_weather
 
 
@@ -106,21 +118,27 @@ def index():
     station = MvgApi.station(DEFAULT_STATION)
     if not station:
         return "Stasjon ikke funnet"
+
     mvgapi = MvgApi(station["id"])
     departures = mvgapi.departures(limit=15, transport_types=[TransportType.UBAHN])
-    print("Departures:", departures)  # Sjekk Render log
+    print("Departures:", departures)  # Bruk gjerne for logging på Render
 
     if not departures:
         return "Ingen avganger funnet"
+
     dep_list = []
     for dep in departures:
+        # Konverter avgangstiden til Europe/Berlin
+        dt = datetime.datetime.fromtimestamp(dep["time"], tz=ZoneInfo("Europe/Berlin"))
         dep_list.append(
             {
                 "line": dep["line"],
                 "destination": dep["destination"],
-                "tid": datetime.datetime.fromtimestamp(dep["time"]).strftime("%H:%M"),
+                "tid": dt.strftime("%H:%M"),
             }
         )
+
+    # Værdata (krever ikke endringer, du bruker riktig tidssone allerede)
     weather = get_weather(station["latitude"], station["longitude"], hours=6)
     detailed_weather = get_weather_next_hour(station["latitude"], station["longitude"])
     html = """
