@@ -39,7 +39,7 @@ def weathercode_to_emoji(code):
 def get_weather(lat, lon, hours=6):
     url = (
         f"https://api.open-meteo.com/v1/forecast?"
-        f"latitude={lat}&longitude={lon}&hourly=temperature_2m,weathercode&forecast_days=1"
+        f"latitude={lat}&longitude={lon}&hourly=temperature_2m,weathercode&forecast_days=2"
     )
     resp = requests.get(url)
     data = resp.json()
@@ -48,7 +48,6 @@ def get_weather(lat, lon, hours=6):
     codes = data["hourly"]["weathercode"]
     now = datetime.datetime.now()
     weather = []
-    # Finn første time som er >= nå
     for t, temp, code in zip(times, temps, codes):
         dt = datetime.datetime.fromisoformat(t)
         if dt >= now:
@@ -109,6 +108,8 @@ def index():
         return "Stasjon ikke funnet"
     mvgapi = MvgApi(station["id"])
     departures = mvgapi.departures(limit=15, transport_types=[TransportType.UBAHN])
+    print("Departures:", departures)  # Sjekk Render log
+
     if not departures:
         return "Ingen avganger funnet"
     dep_list = []
