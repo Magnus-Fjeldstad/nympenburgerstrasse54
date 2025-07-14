@@ -1,0 +1,44 @@
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Flask GitHub Pages</title>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to the Flask GitHub Pages App</h1>
+        <p>This is a simple Flask application deployed on GitHub Pages.</p>
+        <h2>Next U-Bahn Departures</h2>
+        <table>
+            <tr>
+                <th>Line</th>
+                <th>Destination</th>
+                <th>Departure Time</th>
+            </tr>
+            {% for dep in departures %}
+            <tr>
+                <td>{{ dep.line }}</td>
+                <td>{{ dep.destination }}</td>
+                <td>{{ dep.tid }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        <h2>Weather Forecast</h2>
+        <table>
+            <tr>
+                <th>Time</th>
+                <th>Temperature (°C)</th>
+                <th>Weather</th>
+            </tr>
+            {% for w in weather %}
+            <tr>
+                <td>{{ w.tid }}</td>
+                <td>{{ w.temp }}</td>
+                <td>{{ w.emoji }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</body>
+</html>
