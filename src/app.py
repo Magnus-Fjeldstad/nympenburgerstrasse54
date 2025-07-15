@@ -206,6 +206,7 @@ def index():
       max-width: 900px;
       margin: auto;
       padding: 20px;
+      position: relative;
     }
     h1, h2 {
       text-align: center;
@@ -214,10 +215,18 @@ def index():
     form {
       text-align: center;
       margin-bottom: 30px;
+      position: relative;
     }
     input, button {
       font-size: 16px;
       padding: 8px;
+      width: 250px;
+      max-width: 80vw;
+      box-sizing: border-box;
+    }
+    button {
+      margin-left: 8px;
+      cursor: pointer;
     }
     table {
       width: 100%;
@@ -238,10 +247,36 @@ def index():
       color: white;
       font-weight: 600;
     }
-    
     tr:last-child td {
       border-bottom: none;
     }
+
+    /* Autocomplete list styles */
+    #autocomplete-list {
+      position: absolute;
+      top: 38px; /* litt under inputfeltet */
+      left: 50%;
+      transform: translateX(-50%);
+      width: 250px;
+      max-width: 80vw;
+      border: 1px solid #ddd;
+      border-top: none;
+      background: white;
+      max-height: 180px;
+      overflow-y: auto;
+      z-index: 1000;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      border-radius: 0 0 8px 8px;
+    }
+    #autocomplete-list li {
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    #autocomplete-list li:hover {
+      background-color: #0078d7;
+      color: white;
+    }
+
     @media (max-width: 700px) {
       .container {
         padding: 10px;
@@ -250,6 +285,21 @@ def index():
         font-size: 14px;
         padding: 6px 4px;
       }
+      input, button {
+        width: 100%;
+        margin: 4px 0;
+      }
+      form {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      #autocomplete-list {
+        left: 10%;
+        transform: none;
+        width: 80vw;
+        top: 42px;
+      }
     }
   </style>
 </head>
@@ -257,14 +307,18 @@ def index():
   <div class="container">
     <h1>U-Bahn & Weather for Munich</h1>
 
-    <form method="get">
-      <input list="stations" name="station" placeholder="Enter station..." value="{{ station }}" />
-      <datalist id="stations">
-        {% for name in station_names %}
-          <option value="{{ name }}">
-        {% endfor %}
-      </datalist>
+    <form method="get" autocomplete="off" id="station-form">
+      <input
+        type="text"
+        id="stationInput"
+        name="station"
+        placeholder="Enter station..."
+        value="{{ station }}"
+        spellcheck="false"
+        autocomplete="off"
+      />
       <button type="submit">Search</button>
+      <ul id="autocomplete-list"></ul>
     </form>
 
     <h2>Next U-Bahns from {{station}}</h2>
@@ -282,7 +336,6 @@ def index():
         <td>{{ dep.tid }}</td>
         <td>{{ dep.minutes_left }}</td>
       </tr>
-
       {% endfor %}
     </table>
 
@@ -324,13 +377,85 @@ def index():
       {% endfor %}
     </table>
   </div>
+
+<script>
+  const stations = {{ station_names|tojson }};
+  const input = document.getElementById("stationInput");
+  const list = document.getElementById("autocomplete-list");
+
+  input.addEventListener("input", function () {
+    const val = this.value.trim().toLowerCase();
+    list.innerHTML = "";
+    if (!val) return;
+
+    let count = 0;
+    for (const station of stations) {
+      if (station.toLowerCase().startsWith(val)) {
+        const item = document.createElement("li");
+        item.textContent = station;
+        item.addEventListener("click", () => {
+          input.value = station;
+          list.innerHTML = "";
+        });
+        list.appendChild(item);
+        count++;
+        if (count >= 10) break; // maks 10 forslag
+      }
+    }
+  });
+
+  // Klikk utenfor autocomplete-listen skjuler den
+  document.addEventListener("click", e => {
+    if (e.target !== input) {
+      list.innerHTML = "";
+    }
+  });
+
+  // Piltaster og Enter navigasjon
+  let currentFocus = -1;
+  input.addEventListener("keydown", function(e) {
+    const items = list.getElementsByTagName("li");
+    if (items.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      currentFocus++;
+      if (currentFocus >= items.length) currentFocus = 0;
+      addActive(items);
+      e.preventDefault();
+    } else if (e.key === "ArrowUp") {
+      currentFocus--;
+      if (currentFocus < 0) currentFocus = items.length - 1;
+      addActive(items);
+      e.preventDefault();
+    } else if (e.key === "Enter") {
+      if (currentFocus > -1) {
+        e.preventDefault();
+        items[currentFocus].click();
+        currentFocus = -1;
+      }
+    }
+  });
+
+  function addActive(items) {
+    removeActive(items);
+    if (currentFocus >= items.length) currentFocus = 0;
+    if (currentFocus < 0) currentFocus = items.length -1;
+    items[currentFocus].classList.add("autocomplete-active");
+  }
+  function removeActive(items) {
+    for (const item of items) {
+      item.classList.remove("autocomplete-active");
+    }
+  }
+</script>
+
 </body>
 </html>
 """
 
     return render_template_string(
         html,
-        station=station["name"],
+        station=selected_station,
         departures=dep_list,
         weather=weather,
         detailed_weather=detailed_weather,
