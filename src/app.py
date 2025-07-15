@@ -10,7 +10,7 @@ app = Flask(__name__)
 DEFAULT_STATION = "Maillingerstrasse, München"
 
 
-def load_station_names(filename="flask-github-pages/src/static/resources/stations.csv"):
+def load_station_names(filename="/static/resources/stations.csv"):
     with open(filename, newline="", encoding="utf-8") as csvfile:
         reader = csv.DictReader(csvfile)
         return [row["station_name"] for row in reader]
