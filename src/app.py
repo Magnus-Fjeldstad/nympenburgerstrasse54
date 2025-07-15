@@ -1,38 +1,44 @@
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, request
 from mvg import MvgApi, TransportType
 import datetime
 from zoneinfo import ZoneInfo
 import requests
+import csv
 
 app = Flask(__name__)
 
 DEFAULT_STATION = "Maillingerstrasse, München"
 
 
+def load_station_names(filename="stations.csv"):
+    with open(filename, newline="", encoding="utf-8") as csvfile:
+        reader = csv.DictReader(csvfile)
+        return [row["station_name"] for row in reader]
+
+
 def weathercode_to_emoji(code):
-    # Open-Meteo weather codes: https://open-meteo.com/en/docs
     mapping = {
-        0: "☀️",  # Clear sky
-        1: "🌤️",  # Mainly clear
-        2: "⛅",  # Partly cloudy
-        3: "☁️",  # Overcast
-        45: "🌫️",  # Fog
-        48: "🌫️",  # Depositing rime fog
-        51: "🌦️",  # Drizzle: light
-        53: "🌦️",  # Drizzle: moderate
-        55: "🌦️",  # Drizzle: dense
-        61: "🌧️",  # Rain: slight
-        63: "🌧️",  # Rain: moderate
-        65: "🌧️",  # Rain: heavy
-        71: "🌨️",  # Snow fall: slight
-        73: "🌨️",  # Snow fall: moderate
-        75: "🌨️",  # Snow fall: heavy
-        80: "🌦️",  # Rain showers: slight
-        81: "🌦️",  # Rain showers: moderate
-        82: "🌦️",  # Rain showers: violent
-        95: "⛈️",  # Thunderstorm: slight or moderate
-        96: "⛈️",  # Thunderstorm with hail: slight
-        99: "⛈️",  # Thunderstorm with hail: heavy
+        0: "☀️",
+        1: "🌤️",
+        2: "⛅",
+        3: "☁️",
+        45: "🌫️",
+        48: "🌫️",
+        51: "🌦️",
+        53: "🌦️",
+        55: "🌦️",
+        61: "🌧️",
+        63: "🌧️",
+        65: "🌧️",
+        71: "🌨️",
+        73: "🌨️",
+        75: "🌨️",
+        80: "🌦️",
+        81: "🌦️",
+        82: "🌦️",
+        95: "⛈️",
+        96: "⛈️",
+        99: "⛈️",
     }
     return mapping.get(code, "❓")
 
@@ -47,12 +53,11 @@ def get_weather(lat, lon, hours=12):
     times = data["hourly"]["time"]
     temps = data["hourly"]["temperature_2m"]
     codes = data["hourly"]["weathercode"]
-    now = datetime.datetime.now(ZoneInfo("Europe/Berlin"))  # Offset-aware
+    now = datetime.datetime.now(ZoneInfo("Europe/Berlin"))
     weather = []
 
     for t, temp, code in zip(times, temps, codes):
         dt = datetime.datetime.fromisoformat(t)
-        # Konverter UTC → lokal tid
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=datetime.timezone.utc).astimezone(
                 ZoneInfo("Europe/Berlin")
@@ -97,8 +102,6 @@ def get_weather_next_hour(lat, lon):
             dt = dt.replace(tzinfo=datetime.timezone.utc).astimezone(
                 ZoneInfo("Europe/Berlin")
             )
-
-        # Finn neste hele timen etter "nå"
         if dt > now:
             detailed_weather.append(
                 {
@@ -111,39 +114,74 @@ def get_weather_next_hour(lat, lon):
                     "emoji": weathercode_to_emoji(code),
                 }
             )
-            break  # bare én time er ønsket
-
+            break
     return detailed_weather
 
 
 @app.route("/")
 def index():
-    station = MvgApi.station(DEFAULT_STATION)
+    station_names = load_station_names()
+    selected_station = request.args.get("station") or DEFAULT_STATION
+
+    station = MvgApi.station(selected_station)
     if not station:
-        return "Stasjon ikke funnet"
+        return f"Station not found: {selected_station}"
 
     mvgapi = MvgApi(station["id"])
     departures = mvgapi.departures(limit=15, transport_types=[TransportType.UBAHN])
-    print("Departures:", departures)  # Bruk gjerne for logging på Render
-
     if not departures:
-        return "Ingen avganger funnet"
+        return "No departures found"
 
     dep_list = []
+    color_map = {}
+    color_palette = [
+        "#ffd1dc",  # Rosa
+        "#c1f0f6",  # Lys cyan
+        "#ffedcc",  # Aprikos
+        "#d2f4c4",  # Lys grønn
+        "#f6c6ea",  # Lilla-rosa
+        "#c2cfff",  # Lys blå
+        "#ffe0b2",  # Lys oransje
+        "#e0f7fa",  # Blågrønn
+        "#e6ee9c",  # Gulgrønn
+        "#f0c9f0",  # Lavendel
+        "#b2dfdb",  # Turkisgrønn
+        "#f8bbd0",  # Rosa-beige
+        "#dcedc8",  # Matt lime
+        "#f3e5f5",  # Lys lilla
+        "#ffccbc",  # Rosa-oransje
+        "#b3e5fc",  # Isblå
+        "#c8e6c9",  # Mintgrønn
+        "#f0f4c3",  # Gulhvit
+        "#d1c4e9",  # Lilla-grå
+        "#ffecb3",  # Lys gul
+    ]
+
+    color_index = 0
+
+    now = datetime.datetime.now(ZoneInfo("Europe/Berlin"))
+
     for dep in departures:
-        # Konverter avgangstiden til Europe/Berlin
         dt = datetime.datetime.fromtimestamp(dep["time"], tz=ZoneInfo("Europe/Berlin"))
+        minutes_left = int((dt - now).total_seconds() / 60)
+        dest = dep["destination"]
+        if dest not in color_map:
+            color_map[dest] = color_palette[color_index % len(color_palette)]
+            color_index += 1
+
         dep_list.append(
             {
-                "line": dep["line"],
-                "destination": dep["destination"],
+                "line": f'<img src="/static/resources/{dep["line"].lower()}.png" alt="{dep["line"]}" height="24">',
+                "destination": dest,
                 "tid": dt.strftime("%H:%M"),
+                "minutes_left": minutes_left,
+                "bgcolor": color_map[dest],
             }
         )
 
-    # Værdata (krever ikke endringer, du bruker riktig tidssone allerede)
     weather = get_weather(station["latitude"], station["longitude"], hours=12)
     detailed_weather = get_weather_next_hour(station["latitude"], station["longitude"])
+
     html = """
 <html>
 <head>
@@ -156,6 +194,9 @@ def index():
       background: #f4f6f9;
       color: #333;
     }
+    .emoji {
+      font-size: 30px;
+    }
     .container {
       max-width: 900px;
       margin: auto;
@@ -164,6 +205,14 @@ def index():
     h1, h2 {
       text-align: center;
       margin: 30px 0 20px;
+    }
+    form {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    input, button {
+      font-size: 16px;
+      padding: 8px;
     }
     table {
       width: 100%;
@@ -184,6 +233,7 @@ def index():
       color: white;
       font-weight: 600;
     }
+    
     tr:last-child td {
       border-bottom: none;
     }
@@ -200,6 +250,17 @@ def index():
 </head>
 <body>
   <div class="container">
+    <h1>U-Bahn & Weather for Munich</h1>
+
+    <form method="get">
+      <input list="stations" name="station" placeholder="Enter station..." value="{{ station }}" />
+      <datalist id="stations">
+        {% for name in station_names %}
+          <option value="{{ name }}">
+        {% endfor %}
+      </datalist>
+      <button type="submit">Search</button>
+    </form>
 
     <h2>Next U-Bahns from {{station}}</h2>
     <table>
@@ -207,13 +268,16 @@ def index():
         <th>Line</th>
         <th>Destination</th>
         <th>Departure</th>
+        <th>In (min)</th>
       </tr>
       {% for dep in departures %}
-      <tr>
-        <td>{{ dep.line }}</td>
+      <tr style="background-color: {{ dep.bgcolor }}">
+        <td>{{ dep.line|safe }}</td>
         <td>{{ dep.destination }}</td>
         <td>{{ dep.tid }}</td>
+        <td>{{ dep.minutes_left }}</td>
       </tr>
+
       {% endfor %}
     </table>
 
@@ -228,7 +292,7 @@ def index():
       <tr>
         <td>{{ w.tid }}</td>
         <td>{{ w.temp }}</td>
-        <td>{{ w.emoji }}</td>
+        <td class="emoji">{{ w.emoji }}</td>
       </tr>
       {% endfor %}
     </table>
@@ -250,7 +314,7 @@ def index():
         <td>{{ w.følt_temp }}</td>
         <td>{{ w.nedbør }}</td>
         <td>{{ w.vind }}</td>
-        <td>{{ w.emoji }}</td>
+        <td class="emoji">{{ w.emoji }}</td>
       </tr>
       {% endfor %}
     </table>
@@ -265,6 +329,7 @@ def index():
         departures=dep_list,
         weather=weather,
         detailed_weather=detailed_weather,
+        station_names=station_names,
     )
 
 
