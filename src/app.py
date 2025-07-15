@@ -4,13 +4,18 @@ import datetime
 from zoneinfo import ZoneInfo
 import requests
 import csv
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__)
 
 DEFAULT_STATION = "Maillingerstrasse, München"
 
 
-def load_station_names(filename="/static/resources/stations.csv"):
+def load_station_names(filename=None):
+    if filename is None:
+        filename = os.path.join(BASE_DIR, "static", "resources", "stations.csv")
     with open(filename, newline="", encoding="utf-8") as csvfile:
         reader = csv.DictReader(csvfile)
         return [row["station_name"] for row in reader]
